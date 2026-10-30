@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>发力链条自检</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a coach's clipboard — one column, sticky view bar, a chain strip of six groups, then one card per check point with a 对/错 figure pair, three short facts, a cue, and the tracking row. */
+:root{
+  --bg:#F3F6F3; --surface:#FFFFFF; --fg:#18221D; --muted:#5F6E66; --line:#D8E0DA; --line-strong:#B9C5BE;
+  --accent:#0E7A6B; --accent-soft:#DCEFEA; --accent-ink:#0A5A4F;
+  --bad:#C43D4E; --bad-soft:#FBE5E8; --warn:#B9780C; --warn-soft:#FBEFD3; --good:#2C8A57; --good-soft:#DDF2E4; --none:#8B958F; --none-soft:#E9EDEA;
+  --display:"Noto Serif SC","Songti SC","STSong","SimSun",serif;
+  --body:"Noto Sans SC","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --radius:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121816; --surface:#1A2320; --fg:#E6ECE8; --muted:#9DAAA3; --line:#2B3732; --line-strong:#3E4C46;
+    --accent:#4FC3A8; --accent-soft:#1B3630; --accent-ink:#8EDFCB;
+    --bad:#F07A88; --bad-soft:#3A1F24; --warn:#E9B04A; --warn-soft:#3A2E14; --good:#6BD092; --good-soft:#17301F; --none:#78847E; --none-soft:#232C28;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121816; --surface:#1A2320; --fg:#E6ECE8; --muted:#9DAAA3; --line:#2B3732; --line-strong:#3E4C46;
+  --accent:#4FC3A8; --accent-soft:#1B3630; --accent-ink:#8EDFCB;
+  --bad:#F07A88; --bad-soft:#3A1F24; --warn:#E9B04A; --warn-soft:#3A2E14; --good:#6BD092; --good-soft:#17301F; --none:#78847E; --none-soft:#232C28;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.65;margin:0;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+h1,h2,h3,h4{margin:0;text-wrap:balance}
+p{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:880px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* ---------- header ---------- */
+.hero{padding-block:28px 18px}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--accent);margin-bottom:8px}
+.hero h1{font-family:var(--display);font-weight:700;font-size:clamp(28px,5vw,38px);line-height:1.15;letter-spacing:.01em}
+.lede{color:var(--muted);max-width:62ch;margin-top:10px;font-size:15px}
+.progress{margin-top:18px;display:grid;gap:8px}
+.pbar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--none-soft)}
+.pbar span{display:block;height:100%;transition:width .3s}
+.pbar .s-issue{background:var(--bad)} .pbar .s-working{background:var(--warn)} .pbar .s-ok{background:var(--good)} .pbar .s-none{background:transparent}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:0}
+.legend .d-issue{background:var(--bad)} .legend .d-working{background:var(--warn)} .legend .d-ok{background:var(--good)} .legend .d-none{background:var(--none)}
+.sync{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.sync::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--none)}
+.sync[data-mode="cloud"]::before{background:var(--good)}
+
+/* ---------- sticky bar ---------- */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.bar .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:8px;flex-wrap:wrap}
+.tabs{display:flex;gap:4px;background:var(--none-soft);padding:3px;border-radius:999px}
+.tabs button{padding:6px 14px;border-radius:999px;font-weight:500;font-size:14px;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:4px 11px;border-radius:999px;border:1px solid var(--line);font-size:13px;color:var(--muted);background:var(--surface)}
+.chip[aria-pressed="true"]{border-color:var(--fg);color:var(--fg);font-weight:500}
+.chip .n{font-family:var(--mono);font-size:11.5px;margin-left:4px;opacity:.8}
+
+/* ---------- chain strip ---------- */
+.chain{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;padding-block:16px 4px}
+.chain button{display:grid;gap:5px;justify-items:center;padding:8px 4px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:13px}
+.chain button:hover{border-color:var(--line-strong)}
+.chain .dots{display:flex;gap:3px}
+.chain .dots i{width:7px;height:7px;border-radius:50%;background:var(--none)}
+.chain .dots i[data-s="issue"]{background:var(--bad)} .chain .dots i[data-s="working"]{background:var(--warn)} .chain .dots i[data-s="ok"]{background:var(--good)}
+.chain .arrow{color:var(--line-strong);align-self:center;text-align:center}
+@media (max-width:560px){.chain{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* ---------- items ---------- */
+.list{display:grid;gap:16px;padding-block:14px 40px}
+.item{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 18px 16px;scroll-margin-top:72px}
+.item.flash{box-shadow:0 0 0 3px var(--accent-soft)}
+.item-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start}
+.num{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-size:13px;font-weight:500;background:var(--none-soft);color:var(--fg)}
+.item[data-status="issue"] .num{background:var(--bad);color:#fff}
+.item[data-status="working"] .num{background:var(--warn);color:#fff}
+.item[data-status="ok"] .num{background:var(--good);color:#fff}
+.eyebrow{font-size:12px;letter-spacing:.06em;color:var(--muted)}
+.item h3{font-family:var(--display);font-weight:700;font-size:20px;line-height:1.3;margin-top:2px}
+.claim{color:var(--muted);font-size:14px;margin-top:4px;max-width:60ch}
+.pill{font-size:12px;padding:3px 9px;border-radius:999px;background:var(--none-soft);color:var(--muted);white-space:nowrap}
+.item[data-status="issue"] .pill{background:var(--bad-soft);color:var(--bad)}
+.item[data-status="working"] .pill{background:var(--warn-soft);color:var(--warn)}
+.item[data-status="ok"] .pill{background:var(--good-soft);color:var(--good)}
+
+figure.fig{margin:16px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+figure.fig figcaption{grid-column:1/-1;font-size:13px;color:var(--muted)}
+.panel{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:10px 10px 8px;min-width:0}
+.panel svg{display:block;width:100%;height:auto;max-width:300px;margin:0 auto}
+.panel .tag{position:absolute;top:8px;left:8px;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px}
+.panel.ok .tag{background:var(--good-soft);color:var(--good)}
+.panel.bad .tag{background:var(--bad-soft);color:var(--bad)}
+.panel .pl{font-size:13px;text-align:center;margin-top:4px;line-height:1.4}
+.panel.ok .pl{color:var(--good)} .panel.bad .pl{color:var(--bad)}
+@media (max-width:520px){figure.fig{grid-template-columns:1fr}}
+
+/* SVG vocabulary */
+.sk{fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.thin{stroke-width:2}
+.thick{stroke-width:4.5}
+.hd{fill:var(--surface);stroke:currentColor;stroke-width:3}
+.g-ok{stroke:var(--good)} .g-bad{stroke:var(--bad)}
+.f-ok{fill:var(--good)} .f-bad{fill:var(--bad)} .f-sf{fill:var(--surface)} .f-ln{fill:var(--line)}
+.t-ok{fill:var(--good)} .t-bad{fill:var(--bad)}
+.ghost{opacity:.3}
+.lbl{font-family:var(--body);font-size:11px;fill:currentColor}
+.floor{stroke:var(--line-strong);stroke-width:2}
+.dash{stroke:var(--muted);stroke-width:2;stroke-dasharray:4 4;fill:none}
+.net{stroke:var(--muted);stroke-width:2;stroke-dasharray:6 5}
+
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:16px}
+.facts h4{font-size:12px;letter-spacing:.08em;color:var(--muted);font-weight:500;margin-bottom:4px}
+.facts p{font-size:14px;line-height:1.6}
+@media (max-width:720px){.facts{grid-template-columns:1fr;gap:10px}}
+.cue{margin-top:14px;display:flex;gap:10px;align-items:baseline;padding:10px 12px;border-radius:8px;background:var(--accent-soft);color:var(--accent-ink);font-size:14px}
+.cue b{font-family:var(--mono);font-weight:500;font-size:12px;letter-spacing:.08em;white-space:nowrap}
+
+.track{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line);display:grid;gap:10px}
+.seg{display:inline-flex;flex-wrap:wrap;gap:0;border:1px solid var(--line);border-radius:9px;overflow:hidden;width:max-content;max-width:100%}
+.seg button{padding:7px 13px;font-size:13.5px;color:var(--muted);border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{color:#fff;font-weight:500}
+.seg button[data-s="none"][aria-pressed="true"]{background:var(--none)}
+.seg button[data-s="issue"][aria-pressed="true"]{background:var(--bad)}
+.seg button[data-s="working"][aria-pressed="true"]{background:var(--warn)}
+.seg button[data-s="ok"][aria-pressed="true"]{background:var(--good)}
+.note{width:100%;min-height:64px;resize:vertical;font:inherit;font-size:14px;line-height:1.55;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.note::placeholder{color:var(--muted)}
+.meta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;min-height:1em}
+.empty{padding:30px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:var(--radius)}
+
+/* ---------- drills ---------- */
+.drills{padding-block:16px 40px;display:grid;gap:22px}
+.rules{border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;background:var(--surface)}
+.rules h2{font-family:var(--display);font-size:18px;margin-bottom:6px}
+.rules ol{margin:0;padding-left:20px;font-size:14px;line-height:1.7}
+.phase h2{font-family:var(--display);font-size:20px;margin-bottom:2px}
+.phase .sub{color:var(--muted);font-size:14px;margin-bottom:12px}
+.dgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:640px){.dgrid{grid-template-columns:1fr}}
+.drill{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;display:grid;gap:8px;align-content:start}
+.drill[data-on="1"]{border-color:var(--accent)}
+.drill-head{display:flex;justify-content:space-between;gap:10px;align-items:start}
+.drill h3{font-size:16px;font-weight:700;line-height:1.35}
+.drill .sets{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.02em}
+.drill p{font-size:14px}
+.drill .pt{font-size:13.5px;color:var(--muted)}
+.drill .pt b{color:var(--fg);font-weight:500}
+.rel{display:flex;flex-wrap:wrap;gap:5px}
+.rel button{font-size:12px;padding:2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent-ink)}
+.rel button:hover{text-decoration:underline}
+.tog{font-size:12.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.drill[data-on="1"] .tog{background:var(--accent);border-color:var(--accent);color:#fff}
+.foot{color:var(--muted);font-size:12.5px;padding-block:8px 32px;border-top:1px solid var(--line)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+<marker id="ar-ok" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" style="fill:var(--good)"/></marker>
+<marker id="ar-bad" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" style="fill:var(--bad)"/></marker>
+</defs></svg>
+
+<header class="hero wrap">
+  <div class="kicker">右手持拍 · 后场大发力</div>
+  <h1>发力链条自检</h1>
+  <p class="lede">13 个检查点，按链条顺序排：前提 → 装载 → 启动 → 击球 → 收尾 → 整体。每条看图、按"怎么查"去录像对照，记下状态和自己的观察。一次只盯一到两条。</p>
+  <div class="progress">
+    <div class="pbar" id="pbar" aria-hidden="true"></div>
+    <div class="legend" id="legend"></div>
+    <div class="sync" id="sync" data-mode="local">进度保存在这个浏览器里</div>
+  </div>
+</header>
+
+<nav class="bar" aria-label="视图与筛选">
+  <div class="wrap">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-checks" aria-selected="true" data-view="checks">检查点</button>
+      <button role="tab" id="tab-drills" aria-selected="false" data-view="drills">训练动作</button>
+    </div>
+    <div class="filters" id="filters" role="group" aria-label="按状态筛选"></div>
+  </div>
+</nav>
+
+<main class="wrap">
+  <section id="view-checks">
+    <div class="chain" id="chain" aria-label="链条分组"></div>
+    <div class="list" id="list"></div>
+  </section>
+  <section id="view-drills" hidden>
+    <div class="drills" id="drills"></div>
+  </section>
+  <p class="foot">图示为示意图，默认右手持拍。状态与笔记只有你自己看得到。</p>
+</main>
+
+<script>
+(function(){
+'use strict';
+const STATUS=[['none','未检查'],['issue','有问题'],['working','改进中'],['ok','已达标']];
+const SLABEL=Object.fromEntries(STATUS);
+const GROUPS=[['pre','前提'],['load','装载'],['start','启动'],['hit','击球'],['finish','收尾'],['whole','整体']];
+const GLABEL=Object.fromEntries(GROUPS);
+
+/* ---------- shared figure pieces ---------- */
+const FLOOR='<line class="floor" x1="14" y1="164" x2="186" y2="164"/>';
+// back view (seen from behind, net ahead): head, shoulders, torso, legs
+function backBase(opts){
+  const o=Object.assign({sy:86,shL:'<line class="sk" x1="70" y1="86" x2="130" y2="86"/>'},opts||{});
+  return FLOOR+'<line class="sk" x1="100" y1="72" x2="100" y2="128"/>'+o.shL+
+    '<path class="sk" d="M100 128 L86 164 M100 128 L114 164"/>';
+}
+const HEAD_B='<circle class="hd" cx="100" cy="60" r="12"/>';
+// side view facing right (net to the right)
+function sideBase(){
+  return FLOOR+'<line class="sk" x1="90" y1="78" x2="96" y2="124"/><path class="sk" d="M96 124 L78 164 M96 124 L114 164"/>';
+}
+const HEAD_S='<circle class="hd" cx="90" cy="66" r="11"/>';
+function racket(x1,y1,x2,y2,cx,cy,rot,cls){
+  return '<line class="sk '+(cls||'')+'" x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'"/>'+
+    '<ellipse class="sk '+(cls||'')+' f-sf" cx="'+cx+'" cy="'+cy+'" rx="6.5" ry="9.5" transform="rotate('+rot+' '+cx+' '+cy+')"/>';
+}
+
+/* ---------- the 13 check points ---------- */
+const ITEMS=[
+{id:'mobility',group:'pre',title:'胸椎与肩的活动度',
+ claim:'肘高、拍头掉到背后，需要胸椎伸展旋转和肩外旋。久坐的人这两样常常不够。',
+ why:'活动度不够，身体只能用塌腰、耸肩或者肘掉下来去凑，动作怎么练都不对，还容易伤肩。它是后面所有检查点的前提。',
+ check:'平躺，双臂摆成仙人掌状（上臂与身体垂直，肘 90°），前臂和手背能不能贴到地面。再侧卧做"开书"：上面的手臂能不能打开到贴地。',
+ mistakes:'用腰椎后仰代替胸椎伸展；用耸肩代替肩外旋；前臂悬空却觉得自己已经到位。',
+ cue:'每天 5 分钟：泡沫轴胸椎伸展、开书、背阔肌拉伸、弹力带肩外旋。',
+ ok:{label:'前臂贴地，肘保持 90°',svg:
+  '<line class="floor" x1="8" y1="142" x2="192" y2="142"/>'+
+  '<path class="sk" d="M44 128 H118 L150 118 L178 132"/>'+
+  '<circle class="hd" cx="32" cy="128" r="11"/>'+
+  '<path class="sk g-ok" d="M74 118 L44 141"/>'+
+  '<circle class="f-ok" cx="74" cy="118" r="4"/>'+
+  '<text class="lbl" x="82" y="112">肘</text>'+
+  '<text class="lbl" x="150" y="158">地面</text>'},
+ bad:{label:'前臂悬空，肩外旋不够',svg:
+  '<line class="floor" x1="8" y1="142" x2="192" y2="142"/>'+
+  '<path class="sk" d="M44 128 H118 L150 118 L178 132"/>'+
+  '<circle class="hd" cx="32" cy="128" r="11"/>'+
+  '<path class="sk g-bad" d="M74 118 L48 92"/>'+
+  '<circle class="f-bad" cx="74" cy="118" r="4"/>'+
+  '<line class="dash" x1="48" y1="92" x2="48" y2="140"/>'+
+  '<text class="lbl t-bad" x="54" y="88">悬空</text>'+
+  '<text class="lbl" x="150" y="158">地面</text>'},
+ caption:'仰卧外旋测试（侧视）：前臂贴不到地，说明做不出"拍头掉到背后"的装载位。'},
+
+{id:'grip',group:'load',title:'握拍的朝向',
+ claim:'抽挡打多了，握法容易挪成"苍蝇拍"。拍面已经正了，加速只能靠压腕，内旋被锁死。',
+ why:'大发力的拍头速度来自前臂内旋带着拍面翻转。苍蝇拍握法下拍面一开始就对着网，只能靠手腕往下压来加速，又慢又伤肘。',
+ check:'举拍准备时，看到的是拍框边（侧对网）还是整个拍面？杀球时手腕是"往下压"（像锤钉子）还是"翻转"（拍面从朝外转到朝前）？',
+ mistakes:'拍面正对球网；拇指平贴宽面（那是反手握法）；握得太短太靠上，杠杆变短。',
+ cue:'后场球握到拍柄末端，虎口对准窄边，准备时拍框侧对网。',
+ ok:{label:'只看到边框（侧对网）',svg:
+  '<line class="net" x1="24" y1="22" x2="176" y2="22"/><text class="lbl" x="100" y="14" text-anchor="middle">网（前方）</text>'+
+  '<line class="sk" x1="100" y1="116" x2="100" y2="88"/>'+
+  '<rect class="sk g-ok f-sf" x="96.5" y="40" width="7" height="48" rx="3.5"/>'+
+  '<circle class="hd" cx="100" cy="128" r="12"/><text class="lbl" x="100" y="132" text-anchor="middle">手</text>'+
+  '<path class="sk thin g-ok" d="M118 50 A24 24 0 0 1 118 78" marker-end="url(#ar-ok)"/><text class="lbl t-ok" x="126" y="68">内旋</text>'},
+ bad:{label:'整个拍面对网（苍蝇拍）',svg:
+  '<line class="net" x1="24" y1="22" x2="176" y2="22"/><text class="lbl" x="100" y="14" text-anchor="middle">网（前方）</text>'+
+  '<line class="sk" x1="100" y1="116" x2="100" y2="90"/>'+
+  '<ellipse class="sk g-bad f-sf" cx="100" cy="62" rx="26" ry="28"/>'+
+  '<path class="sk thin" opacity=".45" d="M78 52 H122 M76 62 H124 M78 72 H122 M90 38 V86 M100 34 V90 M110 38 V86"/>'+
+  '<circle class="hd" cx="100" cy="128" r="12"/><text class="lbl" x="100" y="132" text-anchor="middle">手</text>'+
+  '<path class="sk thin g-bad" d="M140 48 V80" marker-end="url(#ar-bad)"/><text class="lbl t-bad" x="146" y="66">压腕</text>'},
+ caption:'俯视：举拍准备时拍面的朝向，决定了后面是内旋还是压腕。'},
+
+{id:'elbow',group:'load',title:'抬肘：肘往上，肩往下',default:'working',
+ claim:'把肘抬高的常见方式是整个肩膀往上提。肩胛骨沉住，肘靠肩关节外旋抬起来，才是对的。',
+ why:'耸肩抬肘会让肩关节在高位挤压，打多了肩痛，而且耸起来的肩把转肩的空间也占掉了。肘的高度来自肩外旋，不来自肩膀上提。',
+ check:'举拍时右肩是不是比左肩高、往耳朵方向顶？从背后拍一张照片，看耳朵和肩之间有没有空隙。',
+ mistakes:'耸肩抬肘；肘贴着耳朵固定不动；抬肘的同时腰也跟着往后塌。',
+ cue:'肘往上、肩往下。',
+ ok:{label:'肩沉住，肘高于肩线，耳肩之间有空隙',svg:
+  backBase()+
+  '<path class="sk" d="M70 86 L52 64 L46 38"/>'+
+  '<path class="sk g-ok" d="M130 86 L156 70 L150 40"/>'+
+  racket(150,40,147,28,146,18,-10,'')+
+  HEAD_B+
+  '<path class="sk thin g-ok" d="M113 73 H123 M118 73 V84 M113 84 H123"/>'},
+ bad:{label:'右肩顶到耳朵，肘跟着肩一起上提',svg:
+  backBase({shL:'<line class="sk" x1="70" y1="86" x2="100" y2="86"/><line class="sk g-bad" x1="100" y1="86" x2="130" y2="70"/>'})+
+  '<path class="sk" d="M70 86 L52 64 L46 38"/>'+
+  '<path class="sk" d="M130 70 L156 56 L150 28"/>'+
+  racket(150,28,147,18,146,9,-10,'')+
+  HEAD_B+
+  '<line class="sk thin g-bad" x1="118" y1="84" x2="118" y2="70" marker-end="url(#ar-bad)"/>'},
+ caption:'背视：同样是肘高，区别在肩膀是沉住还是顶起来。'},
+
+{id:'lag',group:'load',title:'倒拍：拍头掉到背后',
+ claim:'肘领先往前走的那一刻，拍头应该指向地面、在背后。没有滞后就没有鞭打。',
+ why:'手指型选手常从举拍位置直接走最短路径击球，拍头从来没掉下去过。拍头掉到背后再甩出来，前臂内旋和手指抓紧才有加速的距离。',
+ check:'录像暂停在"肘到最高点、开始往前"的那一帧：拍头在哪？在头顶上方就是没有倒拍。装载时手腕应该是松的，拍子靠自重垂下去。',
+ mistakes:'拍头始终在头上方；用压腕硬做一个假滞后；手腕全程紧握，拍头垂不下去。',
+ cue:'装载时像在挠背，手腕松，拍头自己垂下去。',
+ ok:{label:'拍头在背后、指向地面',svg:
+  sideBase()+
+  '<path class="sk" d="M94 84 L118 62 L80 82"/>'+
+  racket(80,82,66,110,61,120,30,'g-ok')+
+  '<circle class="f-ok" cx="118" cy="62" r="3.5"/>'+
+  HEAD_S},
+ bad:{label:'拍头留在头顶上方，前臂直立',svg:
+  sideBase()+
+  '<path class="sk" d="M94 84 L118 62 L124 34"/>'+
+  racket(124,34,127,22,128,12,10,'g-bad')+
+  '<circle class="f-bad" cx="118" cy="62" r="3.5"/>'+
+  HEAD_S},
+ caption:'侧视，面向右侧的网：肘已经到位，看拍头在哪一边。'},
+
+{id:'lefthand',group:'load',title:'左手：指球、下拉、收住',default:'working',
+ claim:'左手指向球是为了瞄准和保持侧身，然后随转髋往下拉、收到左侧腹停住。它是刹车，不是装饰。',
+ why:'左手突然收住会让躯干转到一半减速，把速度传给持拍臂，像甩鞭子时手突然停住。没有这个刹车，躯干要么转过头，要么把速度留在身上。',
+ check:'录像停在击球瞬间：左手在哪？收在左侧腹是对的。甩到身后、或者早就掉下去垂着，都不对。',
+ mistakes:'左手甩到身后（躯干转过头，拍子跟不上）；左手掉得太早（身体先转完，拍子还在后面，正是手抢跑的另一面）；左手一直垂着不抬。',
+ cue:'指、拉、收。',
+ ok:{label:'击球瞬间左手收在左侧腹',svg:
+  backBase()+
+  '<path class="sk" d="M130 86 L152 60 L166 32"/>'+
+  racket(166,32,169,21,170,11,10,'')+
+  '<path class="sk g-ok" d="M70 86 L58 108 L84 112"/>'+
+  '<circle class="f-ok" cx="84" cy="112" r="3.5"/>'+
+  HEAD_B},
+ bad:{label:'左手甩到身后或早早掉下去',svg:
+  backBase()+
+  '<path class="sk" d="M130 86 L152 60 L166 32"/>'+
+  racket(166,32,169,21,170,11,10,'')+
+  '<path class="sk g-bad" d="M70 86 L44 100 L20 118"/>'+
+  '<path class="sk thin g-bad" d="M60 120 Q40 128 24 128" marker-end="url(#ar-bad)"/>'+
+  HEAD_B},
+ caption:'背视，击球瞬间：左手的位置决定躯干有没有被刹住。'},
+
+{id:'scissor',group:'start',title:'剪刀脚的时机',
+ claim:'击球发生在两脚空中交换的过程里，不是落地以后。右脚最后落在前面，身体继续往网前走。',
+ why:'落地再挥拍，腿的力量已经进了地面。击球时两腿交换，体重才会跟着拍子进到球里，这也是杀完球能自然上网的原因。',
+ check:'击球后右脚在前还是在后？在后就是体重没进球。再看击球那一帧，两脚是不是都离地或正在交换。',
+ mistakes:'落地后再挥拍；右脚留在后面；干脆原地站着打；交换了腿但躯干往后仰。',
+ cue:'蹬右脚、换腿、球在换腿中打到、右脚落前。',
+ ok:{label:'右脚落在前面，身体往网前走',svg:
+  '<line class="floor" x1="14" y1="156" x2="186" y2="156"/>'+
+  '<line class="sk thin" x1="150" y1="26" x2="184" y2="26" marker-end="url(#ar)"/><text class="lbl" x="146" y="30" text-anchor="end">往网前</text>'+
+  '<line class="sk" x1="98" y1="118" x2="108" y2="72"/>'+
+  '<line class="sk" x1="98" y1="118" x2="76" y2="156"/>'+
+  '<line class="sk g-ok" x1="98" y1="118" x2="126" y2="156"/>'+
+  '<path class="sk" d="M104 86 L128 112"/>'+racket(128,112,146,130,151,136,-45,'')+
+  '<circle class="hd" cx="111" cy="60" r="11"/>'+
+  '<text class="lbl t-ok" x="126" y="169" text-anchor="middle">右</text><text class="lbl" x="74" y="169" text-anchor="middle">左</text>'},
+ bad:{label:'右脚留在后面，重心没跟上',svg:
+  '<line class="floor" x1="14" y1="156" x2="186" y2="156"/>'+
+  '<line class="sk thin" x1="150" y1="26" x2="184" y2="26" marker-end="url(#ar)"/><text class="lbl" x="146" y="30" text-anchor="end">往网前</text>'+
+  '<line class="sk" x1="98" y1="118" x2="94" y2="72"/>'+
+  '<line class="sk g-bad" x1="98" y1="118" x2="72" y2="156"/>'+
+  '<line class="sk" x1="98" y1="118" x2="120" y2="156"/>'+
+  '<path class="sk" d="M96 86 L124 106"/>'+racket(124,106,142,124,147,130,-45,'')+
+  '<circle class="hd" cx="93" cy="60" r="11"/>'+
+  '<text class="lbl t-bad" x="70" y="169" text-anchor="middle">右</text><text class="lbl" x="120" y="169" text-anchor="middle">左</text>'},
+ caption:'侧视，击球之后：哪只脚在前面，就知道体重去了哪里。'},
+
+{id:'hipshoulder',group:'start',title:'髋肩分离',
+ claim:'髋先转、肩晚一点点，中间有一瞬间的扭转感。整块一起转，就没有先拉伸再收缩。',
+ why:'躯干的力量来自髋先转出去、肩被拉住再追上来的那一下弹性。髋肩同步转是用腰硬拧，速度上不去还伤腰。髋的转动由右膝内转带动，不是上半身去拧。',
+ check:'录像停在蹬地转髋那一刻：胸口是否还侧对着网？如果肚脐和胸口同时转过来，就是整块转。',
+ mistakes:'髋肩同步整块转；只转肩不转髋，下半身站死；用腰硬拧，右膝不动。',
+ cue:'肚脐先对网，胸口慢半拍。',
+ ok:{label:'髋已对网，肩还侧着：有扭转',svg:
+  '<line class="net" x1="30" y1="22" x2="170" y2="22"/><text class="lbl" x="100" y="14" text-anchor="middle">网（前方）</text>'+
+  '<rect class="sk g-ok f-sf" x="76" y="104" width="48" height="12" rx="6"/>'+
+  '<rect class="sk f-sf" x="64" y="81" width="72" height="10" rx="5" transform="rotate(-40 100 86)"/>'+
+  '<path class="sk thin g-ok" d="M134 110 A36 36 0 0 0 128 70" marker-end="url(#ar-ok)"/>'+
+  '<text class="lbl t-ok" x="140" y="96">扭转</text>'+
+  '<text class="lbl" x="100" y="136" text-anchor="middle">髋（对网）</text><text class="lbl" x="150" y="60">肩</text>'},
+ bad:{label:'髋肩一起转，没有扭转',svg:
+  '<line class="net" x1="30" y1="22" x2="170" y2="22"/><text class="lbl" x="100" y="14" text-anchor="middle">网（前方）</text>'+
+  '<rect class="sk g-bad f-sf" x="76" y="104" width="48" height="12" rx="6" transform="rotate(-40 100 110)"/>'+
+  '<rect class="sk f-sf" x="64" y="81" width="72" height="10" rx="5" transform="rotate(-40 100 86)"/>'+
+  '<path class="sk thin g-bad" d="M60 128 Q56 84 84 62" marker-end="url(#ar-bad)"/>'+
+  '<text class="lbl t-bad" x="34" y="100">整块转</text>'+
+  '<text class="lbl" x="134" y="136">髋</text><text class="lbl" x="150" y="60">肩</text>'},
+ caption:'俯视：蹬地转髋那一刻，髋线和肩线的夹角就是你有没有存住弹性。'},
+
+{id:'tilt',group:'start',title:'肩膀高低交换，不是水平转',
+ claim:'侧身时左肩高右肩低，击球时交换成右肩高左肩低，是"翻过去"，不是像挥棒球棒那样平着转。',
+ why:'球在头顶上方，力量要从上往下走。水平转动的结果是击球点偏后偏平，球快但不陡，也是"不通透"的典型来源。',
+ check:'录像停在击球瞬间：右肩是不是在左肩之上？准备时左肩是不是比右肩高、指着球？',
+ mistakes:'双肩全程水平转；击球时右肩反而低；准备时就没有侧身，两肩平对网。',
+ cue:'左肩指球，然后翻过去。',
+ ok:{label:'击球时右肩在左肩之上（翻过去）',svg:
+  '<line class="floor" x1="14" y1="164" x2="186" y2="164"/>'+
+  '<line class="sk" x1="100" y1="74" x2="100" y2="130"/><path class="sk" d="M100 130 L86 164 M100 130 L114 164"/>'+
+  '<line class="sk thick g-ok" x1="72" y1="100" x2="128" y2="80"/>'+
+  '<path class="sk" d="M128 80 L150 54 L158 30"/>'+racket(158,30,161,20,162,11,10,'')+
+  '<path class="sk" d="M72 100 L62 116 L84 120"/>'+
+  '<path class="sk thin g-ok" d="M56 66 Q100 18 142 48" marker-end="url(#ar-ok)"/>'+
+  '<circle class="hd" cx="100" cy="60" r="12"/>'},
+ bad:{label:'两肩水平，平着转过来',svg:
+  '<line class="floor" x1="14" y1="164" x2="186" y2="164"/>'+
+  '<line class="sk" x1="100" y1="74" x2="100" y2="130"/><path class="sk" d="M100 130 L86 164 M100 130 L114 164"/>'+
+  '<line class="sk thick g-bad" x1="72" y1="92" x2="128" y2="92"/>'+
+  '<path class="sk" d="M128 92 L150 68 L156 40"/>'+racket(156,40,159,28,160,19,10,'')+
+  '<path class="sk" d="M72 92 L60 110 L80 116"/>'+
+  '<path class="sk thin g-bad" d="M62 116 Q100 134 138 116" marker-end="url(#ar-bad)"/>'+
+  '<circle class="hd" cx="100" cy="60" r="12"/>'},
+ caption:'背视，击球瞬间：看肩线是倾斜的还是水平的。'},
+
+{id:'elbowlead',group:'hit',title:'肘先走，不是推',
+ claim:'抬肘只是起点。肘领着往前走、比拍头先到，拍头滞后再甩出来。肘固定住从肘开始挥，就成了推球。',
+ why:'链条的加速是依次的：肘先往前，前臂和拍头被带着跟上，最后内旋和手指把速度放出去。肘固定不动，前臂像铰链一样翻，等于只用了一节。',
+ check:'录像慢放往前的过程：肘是不是先于手向前移动？肘不动、只有前臂往前，就是"推"。',
+ mistakes:'肘固定、前臂推（像扔飞镖）；肘掉下来再挥；肘走得太靠前变成"顶"球。',
+ cue:'肘带手，手带拍。',
+ ok:{label:'肘先往前，拍头还留在后面',svg:
+  sideBase()+
+  '<path class="sk ghost" d="M94 84 L112 66 L82 80"/>'+
+  '<g class="ghost">'+racket(82,80,70,106,66,115,30,'')+'</g>'+
+  '<path class="sk" d="M94 84 L132 64 L110 74"/>'+
+  racket(110,74,96,102,91,111,30,'g-ok')+
+  '<circle class="f-ok" cx="132" cy="64" r="3.5"/>'+
+  '<line class="sk thin g-ok" x1="114" y1="56" x2="132" y2="54" marker-end="url(#ar-ok)"/><text class="lbl t-ok" x="112" y="50">肘先</text>'+
+  HEAD_S},
+ bad:{label:'肘固定，前臂像铰链一样推出去',svg:
+  sideBase()+
+  '<path class="sk ghost" d="M118 64 L92 80"/>'+
+  '<path class="sk" d="M94 84 L118 64 L146 44"/>'+
+  racket(146,44,156,36,162,30,-40,'g-bad')+
+  '<circle class="f-bad" cx="118" cy="64" r="3.5"/><circle class="dash" cx="118" cy="64" r="9"/>'+
+  '<path class="sk thin g-bad" d="M94 72 Q106 30 140 36" marker-end="url(#ar-bad)"/><text class="lbl t-bad" x="128" y="20">推</text>'+
+  HEAD_S},
+ caption:'侧视，向前挥的过程：先动的是肘，还是只有前臂。'},
+
+{id:'contact',group:'hit',title:'手臂伸展与击球点',
+ claim:'握短柄、肘弯着击球是手指型选手的默认状态，杠杆短，球轻。应在手臂接近伸直时击球，点在头前上方一点钟方向。',
+ why:'杠杆越长，同样的转速下拍头越快；击球点在身前，身体的重量才能压进球里，球才会陡。球到头顶正上方或后面，只剩手能动。',
+ check:'录像停在击球帧：肘是接近伸直还是明显弯着？击球点在头的前面，还是正上方、后面？',
+ mistakes:'肘弯着击球；击球点在头顶正上方或头后；握短柄；等球，不往上够。',
+ cue:'往上够球，在最高点前一点打。',
+ ok:{label:'臂近伸直，击球点在头前（一点钟）',svg:
+  sideBase()+
+  '<line class="dash" x1="90" y1="50" x2="90" y2="10"/>'+
+  '<path class="sk g-ok" d="M94 84 L110 56 L122 30"/>'+
+  racket(122,30,127,20,129,12,20,'g-ok')+
+  '<text class="lbl t-ok" x="138" y="40">头前</text>'+
+  HEAD_S},
+ bad:{label:'肘弯着，球在头顶正上方或头后',svg:
+  sideBase()+
+  '<line class="dash" x1="90" y1="50" x2="90" y2="10"/>'+
+  '<path class="sk g-bad" d="M94 84 L114 62 L96 42"/>'+
+  racket(96,42,92,30,90,20,-10,'g-bad')+
+  '<path class="sk thin g-bad" d="M104 68 A10 10 0 0 0 108 52"/>'+
+  '<text class="lbl t-bad" x="104" y="20">头顶 / 头后</text>'+
+  HEAD_S},
+ caption:'侧视，击球瞬间：虚线是头顶的垂线，拍头应该在它的前面。'},
+
+{id:'crunch',group:'hit',title:'收腹，不是后仰',
+ claim:'转体之后还有一个小幅的躯干前屈，很多人反而是仰着打。',
+ why:'收腹是链条里最后一节躯干的力，它把转体的速度往前下方送。后仰等于把身体的重量留在后面，球只能靠手去压。',
+ check:'录像击球瞬间看躯干：略前倾是对的，后仰、挺肚子是错的。',
+ mistakes:'后仰、挺肚子；靠腰椎后弯去够头后的球；为了"起跳感"把上半身往后甩。',
+ cue:'击球时肋骨往髋收。',
+ ok:{label:'击球时躯干略前倾',svg:
+  FLOOR+
+  '<line class="sk g-ok" x1="98" y1="122" x2="110" y2="78"/>'+
+  '<path class="sk" d="M98 122 L122 164 M98 122 L80 164"/>'+
+  '<path class="sk" d="M108 88 L136 102 L150 124"/>'+racket(150,124,160,138,164,145,-35,'')+
+  '<path class="sk thin g-ok" d="M120 92 Q114 104 104 112" marker-end="url(#ar-ok)"/>'+
+  '<circle class="hd" cx="113" cy="66" r="11"/>'},
+ bad:{label:'后仰挺肚子，重量留在后面',svg:
+  FLOOR+
+  '<path class="sk g-bad" d="M98 122 Q108 100 88 78"/>'+
+  '<path class="sk" d="M98 122 L122 164 M98 122 L80 164"/>'+
+  '<path class="sk" d="M92 86 L118 70 L132 44"/>'+racket(132,44,138,34,141,26,-20,'')+
+  '<text class="lbl t-bad" x="46" y="100">后仰</text>'+
+  '<circle class="hd" cx="85" cy="66" r="11"/>'},
+ caption:'侧视，击球瞬间：躯干的倾斜方向。'},
+
+{id:'follow',group:'finish',title:'随挥到左下，让拍子飞完',
+ claim:'封网和压球的习惯是击球后把拍子停住，带进大发力里等于鞭子甩出去前先刹车。',
+ why:'随挥不产生力，但停拍会让身体提前减速，内旋也做不完整。拍子顺着内旋甩到身体左侧下方、拍面翻过去，说明前面的链条是通的。',
+ check:'随挥结束时拍头指向哪？指着网的方向是内旋没完成；应该指向左下，拍面已经翻过来。',
+ mistakes:'击球后停拍；随挥横着往左甩（水平）；手臂僵着去"控制"随挥。',
+ cue:'让拍子自己飞完。',
+ ok:{label:'拍子甩到身体左下，拍面翻过去',svg:
+  backBase()+
+  '<path class="sk" d="M130 86 L112 108 L84 120"/>'+
+  racket(84,120,64,140,56,148,-45,'g-ok')+
+  '<path class="sk" d="M70 86 L60 102 L80 106"/>'+
+  '<path class="sk thin g-ok" d="M158 26 C172 70 150 108 96 124" marker-end="url(#ar-ok)"/>'+
+  HEAD_B},
+ bad:{label:'击球后停拍，拍头还指着网',svg:
+  backBase()+
+  '<path class="sk" d="M130 86 L146 58 L152 32"/>'+
+  racket(152,32,154,22,155,13,5,'g-bad')+
+  '<path class="sk" d="M70 86 L60 102 L80 106"/>'+
+  '<path class="sk g-bad" d="M170 10 V24 M177 10 V24"/>'+
+  HEAD_B},
+ caption:'背视：随挥的终点在哪里，前面的内旋就做到哪里。'},
+
+{id:'rhythm',group:'whole',title:'节奏与张力：慢、慢、快',vb:'0 60 200 100',
+ claim:'到位、装载、停一瞬、一口气放出去。手指型选手的节奏大概率是"快、快"。身体用力时手臂要更松，不是更紧。',
+ why:'大肌群需要时间装载，手指手腕不需要，所以手总是先跑。装载时的那个停顿，正是你网前停顿的那种能力，只是现在要让手等身体。加身体也不等于加大挥拍幅度，幅度大了只会更晚。',
+ check:'听自己：击球前有没有一个短暂的装载停顿？击球瞬间有没有短促呼气？打完 20 个高远球前臂酸不酸，酸就是握太紧。',
+ mistakes:'快快节奏，没有装载；加了身体后手臂反而更紧；为了"用上身体"把挥拍幅度加大，结果更晚。',
+ cue:'到位、停、放。击球瞬间短促呼气。',
+ ok:{label:'到位 → 装载 → 停 → 放',svg:
+  '<line class="floor" x1="12" y1="100" x2="188" y2="100"/>'+
+  '<rect class="f-ln" x="16" y="92" width="54" height="16" rx="4"/><text class="lbl" x="43" y="84" text-anchor="middle">到位</text>'+
+  '<rect class="f-ln" x="76" y="92" width="54" height="16" rx="4"/><text class="lbl" x="103" y="84" text-anchor="middle">装载</text>'+
+  '<rect x="136" y="86" width="7" height="28" rx="2" fill="currentColor"/><text class="lbl" x="139" y="80" text-anchor="middle">停</text>'+
+  '<rect class="f-ok" x="149" y="92" width="36" height="16" rx="4"/><text class="lbl t-ok" x="167" y="84" text-anchor="middle">放</text>'+
+  '<text class="lbl" x="43" y="128" text-anchor="middle">慢</text><text class="lbl" x="103" y="128" text-anchor="middle">慢</text><text class="lbl t-ok" x="167" y="128" text-anchor="middle">快</text>'+
+  '<text class="lbl t-ok" x="167" y="148" text-anchor="middle">呼气</text>'},
+ bad:{label:'快、快：没有装载，没有停',svg:
+  '<line class="floor" x1="12" y1="100" x2="188" y2="100"/>'+
+  '<rect class="f-bad" opacity=".55" x="16" y="92" width="26" height="16" rx="4"/><text class="lbl t-bad" x="29" y="84" text-anchor="middle">快</text>'+
+  '<rect class="f-bad" opacity=".55" x="46" y="92" width="26" height="16" rx="4"/><text class="lbl t-bad" x="59" y="84" text-anchor="middle">快</text>'+
+  '<text class="lbl" x="100" y="104">…</text>'+
+  '<text class="lbl t-bad" x="100" y="136" text-anchor="middle">手先跑，身体没来得及</text>'},
+ caption:'一拍的时间线：装载占大头，放出去只是最后一小段。'}
+];
+const DEFAULTS=Object.fromEntries(ITEMS.map(it=>[it.id,it.default||'none']));
+
+/* ---------- drills (no schedule, grouped by goal) ---------- */
+const PHASES=[
+ {id:'p1',name:'阶段一 · 关掉手，逼出身体',sub:'先把手暂时关掉，身体才会出来。这一阶段只打高远球。'},
+ {id:'p2',name:'阶段二 · 手加回来，建链条',sub:'身体能把球送到底线以后，再把手指的最后一下接上去。'},
+ {id:'p3',name:'阶段三 · 整合到双打',sub:'把链条放进真实的攻防和轮转里。'},
+ {id:'home',name:'家里 · 辅助练习',sub:'每次 20 分钟左右，不用球场。'}
+];
+const DRILLS=[
+ {phase:'p1',name:'锁腕高远多球',sets:'每组 10 球，记到位数',how:'陪练挑球到后场，你把手腕固定住不甩、手指不抓，只用蹬地、转髋、转肩和肘把球送到对方底线。能稳定到位之后再把手腕加回来，感受两种球的区别。',point:'到不了底线，就是身体没参与。这也是确认链条有没有建立的测试。',rel:['scissor','hipshoulder','tilt','elbowlead','contact']},
+ {phase:'p1',name:'扔球练习',sets:'热身时 20 个',how:'站在后场，把羽毛球或网球往对面扔。要求动作是蹬转、肘先走、最后才是手。',point:'扔不远就是身体没参与。扔球不会"用手救场"，比挥拍更诚实。',rel:['elbowlead','lag','hipshoulder','scissor']},
+ {phase:'p1',name:'分段定格影子挥拍',sets:'正手、头顶各 3 组 × 10',how:'侧身举拍 → 蹬地转髋（定格：手必须还在后面）→ 转肩肘走 → 前臂内旋、手指抓紧。每一步停住检查。',point:'重点是第二步定格时，看手有没有抢跑。',rel:['elbow','lag','lefthand','hipshoulder','rhythm']},
+ {phase:'p1',name:'封网上步',sets:'3 组 × 15 球',how:'拍头举在脸前站在 T 点，陪练推平球或轻挑到网口上方，你必须先出右脚迎上去再压。手的动作保持现在的习惯，不用改。',point:'规则：脚不动不许封。封网是脚的动作，手只负责最后一下。',rel:[]},
+ {phase:'p1',name:'小跳启动',sets:'前两周只练启动',how:'陪练随机放网或挑后场，你盯住对方击球瞬间做小跳，然后才动。先不管击球质量。',point:'被动的根源在启动晚了半拍，不在挥拍。',rel:[]},
+ {phase:'p2',name:'原地杀球链',sets:'3 组 × 10，杀中线',how:'不起跳。顺序是蹬转、剪刀脚换脚、肘高、拍头滞后、内旋、手指最后抓。',point:'目标不是快，是声音清脆、落点陡。感觉球变重了就对了。',rel:['scissor','lag','elbowlead','contact','crunch','follow']},
+ {phase:'p2',name:'被动区多球',sets:'每组 10 球',how:'陪练推平球到你后场，让你来不及完全到位，练绕头顶和劈吊过渡。球在头后时一律吊球，不硬拉。',point:'被动位置打高远在男双里本来就是差选择，先改选择，再改技术。',rel:['contact']},
+ {phase:'p2',name:'封网随机',sets:'3 组 × 15，记高球处理率',how:'陪练随机放网、推平、挑高。高于网的球必须上步封压，低于网的才放和勾。',point:'封网不等于一拍打死：所有高于网的球都让它往下走。',rel:[]},
+ {phase:'p2',name:'杀上网',sets:'每组 10 个回合',how:'杀一拍立刻前压封网，陪练挡网，你放网或封压。',point:'把你的强项接在硬球后面。右脚落前、身体往网前走，上网就是自然的。',rel:['scissor']},
+ {phase:'p3',name:'二打一攻防与轮转',sets:'每次 10 分钟',how:'搭档杀球你封网，然后换边；你被挑到后场后按"谁起球谁回后场"轮转，不固定前后。',point:'对手最简单的策略就是把你挑到后场，轮转是答案。',rel:[]},
+ {phase:'p3',name:'对比录像',sets:'固定机位 10 分钟',how:'手机架在场边，录 10 分钟多球和比赛。重点看三个画面：击球时手有没有抢跑、重心在哪只脚、封网时有没有先出脚。',point:'录像是性价比最高的一件事，大部分检查点只有录像才看得出来。',rel:['rhythm','scissor','lefthand']},
+ {phase:'home',name:'活动度 5 分钟',sets:'每天',how:'泡沫轴胸椎伸展、侧卧开书、背阔肌拉伸、弹力带肩外旋，各 1 分钟左右。',point:'活动度是前提。贴不到地，前面的动作就做不出来。',rel:['mobility','elbow']},
+ {phase:'home',name:'下肢与躯干',sets:'每周 2 次',how:'跳绳 3 × 1 分钟、分腿蹲或分腿蹲跳 3 × 8–10、提踵 3 × 15、转体抛投 3 × 10（药球或装满水的瓶子）、平板支撑 3 × 45 秒。',point:'起跳和体力都从这里来，先有腿再谈跳。',rel:['scissor','hipshoulder','crunch']},
+ {phase:'home',name:'套拍套挥内旋',sets:'3 × 15',how:'拍子套着拍套挥拍，手臂放松，靠前臂内旋把拍头甩出"呼"的声音。',point:'内旋是手上唯一还需要补的东西：不是手指，是前臂的翻转。',rel:['grip','follow']}
+];
+const RULES=[
+ '一次只改一到两个点。肘和左手已经在改，先打两三周，再按活动度、握拍、倒拍的顺序往下走。',
+ '改动作期间只用高远球练，先不杀球：杀球的得分欲望会让手又回来救场。',
+ '球打坏了也不许用手去补。前两周球质变差是正常的。',
+ '身体用力时手臂更松，不是更紧；加身体不等于加大挥拍幅度。',
+ '每隔一段时间录一次像，和上一次对比，而不是凭感觉。'
+];
+
+/* ---------- state ---------- */
+const KEY='chain-check-v1';
+let state=normalize(loadLocal());
+let ref=null, pending=null, writing=false, timer=null, filter='all';
+
+function normalize(raw){
+  const s={checks:{},drills:{}};
+  const r=(raw&&typeof raw==='object')?raw:{};
+  for(const it of ITEMS){
+    const c=(r.checks&&r.checks[it.id])||{};
+    s.checks[it.id]={status:SLABEL[c.status]?c.status:DEFAULTS[it.id],note:typeof c.note==='string'?c.note:'',updatedAt:typeof c.updatedAt==='string'?c.updatedAt:''};
+  }
+  if(r.drills&&typeof r.drills==='object'){for(const k in r.drills){if(r.drills[k])s.drills[k]=true;}}
+  return s;
+}
+function loadLocal(){try{const t=localStorage.getItem(KEY);return t?JSON.parse(t):null;}catch(e){return null;}}
+function saveLocal(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+function setSync(mode,msg){const el=document.getElementById('sync');el.dataset.mode=mode;el.textContent=msg;}
+function save(){
+  saveLocal();
+  if(!ref)return;
+  pending=JSON.parse(JSON.stringify(state));
+  clearTimeout(timer);timer=setTimeout(flush,700);
+}
+async function flush(){
+  if(writing||!pending||!ref)return;
+  writing=true;const body=pending;pending=null;
+  try{await ref.set(body);}
+  catch(e){
+    const code=e&&e.code;
+    if(code==='unavailable'||code==='resource_exhausted'){pending=pending||body;setTimeout(flush,1500+Math.random()*1500);}
+    else{setSync('local','没能同步到账号，进度先保存在这个浏览器里');}
+  }
+  writing=false;
+  if(pending)flush();
+}
+function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmt(iso){return iso?iso.slice(0,10):'';}
+
+/* ---------- render: checks ---------- */
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function itemHTML(it,idx){
+  const c=state.checks[it.id];const vb=it.vb||'0 0 200 170';
+  return '<article class="item" id="c-'+it.id+'" data-status="'+c.status+'" data-group="'+it.group+'">'+
+   '<header class="item-head"><div class="num">'+String(idx+1).padStart(2,'0')+'</div>'+
+   '<div><div class="eyebrow">'+GLABEL[it.group]+'</div><h3>'+it.title+'</h3><p class="claim">'+it.claim+'</p></div>'+
+   '<span class="pill" data-role="pill">'+SLABEL[c.status]+'</span></header>'+
+   '<figure class="fig">'+
+    '<div class="panel ok"><span class="tag">对</span><svg viewBox="'+vb+'" role="img" aria-label="正确：'+esc(it.ok.label)+'">'+it.ok.svg+'</svg><div class="pl">'+it.ok.label+'</div></div>'+
+    '<div class="panel bad"><span class="tag">错</span><svg viewBox="'+vb+'" role="img" aria-label="错误：'+esc(it.bad.label)+'">'+it.bad.svg+'</svg><div class="pl">'+it.bad.label+'</div></div>'+
+    '<figcaption>'+it.caption+'</figcaption></figure>'+
+   '<div class="facts"><div><h4>为什么</h4><p>'+it.why+'</p></div><div><h4>怎么查</h4><p>'+it.check+'</p></div><div><h4>常见错误</h4><p>'+it.mistakes+'</p></div></div>'+
+   '<div class="cue"><b>口诀</b><span>'+it.cue+'</span></div>'+
+   '<div class="track">'+
+    '<div class="seg" role="group" aria-label="状态" id="seg-'+it.id+'">'+STATUS.map(([k,l])=>'<button type="button" data-s="'+k+'" aria-pressed="'+(c.status===k)+'">'+l+'</button>').join('')+'</div>'+
+    '<textarea class="note" id="note-'+it.id+'" rows="2" placeholder="录像看到了什么、哪天查的、改了之后的感觉…">'+esc(c.note)+'</textarea>'+
+    '<div class="meta" data-role="meta">'+(c.updatedAt?'更新于 '+fmt(c.updatedAt):'')+'</div>'+
+   '</div></article>';
+}
+function renderList(){
+  document.getElementById('list').innerHTML=ITEMS.map(itemHTML).join('')+'<div class="empty" id="empty" hidden>这个状态下没有检查点。</div>';
+}
+function applyState(){
+  for(const it of ITEMS){
+    const c=state.checks[it.id];const el=document.getElementById('c-'+it.id);if(!el)continue;
+    el.dataset.status=c.status;
+    el.querySelector('[data-role="pill"]').textContent=SLABEL[c.status];
+    el.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.s===c.status)));
+    const ta=document.getElementById('note-'+it.id);
+    if(ta&&document.activeElement!==ta&&ta.value!==c.note)ta.value=c.note;
+    el.querySelector('[data-role="meta"]').textContent=c.updatedAt?'更新于 '+fmt(c.updatedAt):'';
+  }
+  document.querySelectorAll('.drill').forEach(d=>{d.dataset.on=state.drills[d.dataset.id]?'1':'0';d.querySelector('.tog').textContent=state.drills[d.dataset.id]?'在练':'加入在练';});
+  renderSummary();applyFilter();
+}
+function counts(){const n={none:0,issue:0,working:0,ok:0};for(const it of ITEMS)n[state.checks[it.id].status]++;return n;}
+function renderSummary(){
+  const n=counts(),total=ITEMS.length;
+  document.getElementById('pbar').innerHTML=['issue','working','ok'].map(k=>'<span class="s-'+k+'" style="width:'+(n[k]/total*100)+'%"></span>').join('');
+  document.getElementById('legend').innerHTML=['ok','working','issue','none'].map(k=>'<span><i class="d-'+k+'"></i>'+SLABEL[k]+' '+n[k]+'</span>').join('')+'<span>共 '+total+' 条</span>';
+  document.getElementById('filters').innerHTML=[['all','全部',total]].concat(STATUS.map(([k,l])=>[k,l,n[k]])).map(([k,l,c])=>'<button type="button" class="chip" data-f="'+k+'" aria-pressed="'+(filter===k)+'">'+l+'<span class="n">'+c+'</span></button>').join('');
+  document.getElementById('chain').innerHTML=GROUPS.map(([g,l])=>'<button type="button" data-g="'+g+'"><span>'+l+'</span><span class="dots">'+ITEMS.filter(i=>i.group===g).map(i=>'<i data-s="'+state.checks[i.id].status+'"></i>').join('')+'</span></button>').join('');
+}
+function applyFilter(){
+  let shown=0;
+  document.querySelectorAll('.item').forEach(el=>{const show=filter==='all'||el.dataset.status===filter;el.hidden=!show;if(show)shown++;});
+  document.getElementById('empty').hidden=shown>0;
+  document.querySelectorAll('#filters .chip').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.f===filter)));
+}
+
+/* ---------- render: drills ---------- */
+function renderDrills(){
+  const byId=Object.fromEntries(ITEMS.map((it,i)=>[it.id,{t:it.title,i:i+1}]));
+  let html='<section class="rules"><h2>练习规则</h2><ol>'+RULES.map(r=>'<li>'+r+'</li>').join('')+'</ol></section>';
+  for(const ph of PHASES){
+    html+='<section class="phase"><h2>'+ph.name+'</h2><p class="sub">'+ph.sub+'</p><div class="dgrid">'+
+      DRILLS.filter(d=>d.phase===ph.id).map(d=>{
+        const id=slug(d.name);
+        return '<article class="drill" data-id="'+id+'" data-on="'+(state.drills[id]?'1':'0')+'">'+
+         '<div class="drill-head"><div><h3>'+d.name+'</h3><div class="sets">'+d.sets+'</div></div><button type="button" class="tog">'+(state.drills[id]?'在练':'加入在练')+'</button></div>'+
+         '<p>'+d.how+'</p><p class="pt"><b>要点</b> '+d.point+'</p>'+
+         (d.rel.length?'<div class="rel">'+d.rel.map(r=>'<button type="button" data-go="'+r+'">'+String(byId[r].i).padStart(2,'0')+' '+byId[r].t+'</button>').join('')+'</div>':'')+
+        '</article>';
+      }).join('')+'</div></section>';
+  }
+  document.getElementById('drills').innerHTML=html;
+}
+function slug(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return 'd'+h.toString(36);}
+
+/* ---------- views ---------- */
+function setView(v){
+  const checks=v!=='drills';
+  document.getElementById('view-checks').hidden=!checks;
+  document.getElementById('view-drills').hidden=checks;
+  document.getElementById('filters').hidden=!checks;
+  document.querySelectorAll('.tabs [role="tab"]').forEach(t=>t.setAttribute('aria-selected',String((t.dataset.view==='drills')!==checks)));
+}
+function currentView(){return location.hash==='#drills'?'drills':'checks';}
+function goItem(id){
+  if(currentView()!=='checks'){location.hash='#checks';setView('checks');}
+  filter='all';applyFilter();
+  const el=document.getElementById('c-'+id);if(!el)return;
+  el.scrollIntoView({behavior:'smooth',block:'start'});
+  el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1600);
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button');if(!t)return;
+  if(t.dataset.view){location.hash='#'+t.dataset.view;setView(t.dataset.view);return;}
+  if(t.dataset.f){filter=t.dataset.f;applyFilter();return;}
+  if(t.dataset.g){const first=ITEMS.find(i=>i.group===t.dataset.g);if(first)goItem(first.id);return;}
+  if(t.dataset.go){goItem(t.dataset.go);return;}
+  if(t.classList.contains('tog')){const d=t.closest('.drill');const id=d.dataset.id;if(state.drills[id])delete state.drills[id];else state.drills[id]=true;applyState();save();return;}
+  if(t.dataset.s&&t.closest('.seg')){
+    const id=t.closest('.item').id.slice(2);const c=state.checks[id];
+    if(c.status===t.dataset.s)return;
+    c.status=t.dataset.s;c.updatedAt=new Date().toISOString();applyState();save();
+  }
+});
+let noteTimer=null;
+document.addEventListener('input',e=>{
+  const ta=e.target;if(!ta.classList||!ta.classList.contains('note'))return;
+  const id=ta.id.slice(5);const c=state.checks[id];c.note=ta.value;c.updatedAt=new Date().toISOString();
+  clearTimeout(noteTimer);noteTimer=setTimeout(()=>{applyState();save();},500);
+});
+window.addEventListener('hashchange',()=>setView(currentView()));
+
+/* ---------- boot ---------- */
+renderList();renderDrills();applyState();setView(currentView());
+
+(async()=>{
+  try{
+    if(!window.claude||typeof window.claude.use!=='function')return;
+    const [db,user]=await Promise.all([window.claude.use('db'),window.claude.use('user')]);
+    if(!db||!user)return;
+    const uid=await user.id();if(!uid)return;
+    const docRef=db.doc('data/users/'+uid+'/progress');
+    docRef.onSnapshot(snap=>{
+      if(snap.exists){const d=snap.data();if(d&&d.checks&&!snap.metadata.hasPendingWrites){state=normalize(d);applyState();saveLocal();}}
+      if(!ref){ref=docRef;}
+      setSync('cloud','进度已同步到你的账号，换设备打开也在');
+    },err=>{ref=null;setSync('local','进度保存在这个浏览器里');});
+  }catch(e){}
+})();
+})();
+</script>
+
+</body>
+</html>
